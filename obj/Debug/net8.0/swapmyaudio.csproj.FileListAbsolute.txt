@@ -1,0 +1,12 @@
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\bin\Debug\net8.0\swapmyaudio.deps.json
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\bin\Debug\net8.0\swapmyaudio.dll
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\bin\Debug\net8.0\swapmyaudio.pdb
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.csproj.AssemblyReference.cache
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.AssemblyInfoInputs.cache
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.AssemblyInfo.cs
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.csproj.CoreCompileInputs.cache
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.dll
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\refint\swapmyaudio.dll
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.pdb
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\ref\swapmyaudio.dll

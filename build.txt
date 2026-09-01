@@ -1,0 +1,5 @@
+displayName = Swap My Audio!
+author = myangell
+version = 0.1
+side = Client
+buildIgnore = *.csproj, *.sln, *.user, obj\, bin\, .vs\, .git\

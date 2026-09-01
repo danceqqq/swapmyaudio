@@ -1,0 +1,6 @@
+DisplayName: Swap My Audio!
+
+UI: {
+	AudioDevice: Устройство вывода
+	SystemDefault: По умолчанию
+}

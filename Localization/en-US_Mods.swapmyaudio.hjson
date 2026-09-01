@@ -1,0 +1,6 @@
+DisplayName: Swap My Audio!
+
+UI: {
+	AudioDevice: Audio Device
+	SystemDefault: System Default
+}
