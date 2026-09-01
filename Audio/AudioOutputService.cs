@@ -50,17 +50,8 @@ namespace swapmyaudio.Audio
 				return;
 
 			string persisted = _policy.GetPersistedRenderEndpoint();
-			if (string.IsNullOrEmpty(persisted)) {
-				_selectedId = "";
-				return;
-			}
-
-			if (FindDevice(persisted) == null) {
-				_selectedId = "";
-				return;
-			}
-
-			_selectedId = persisted;
+			if (!string.IsNullOrEmpty(persisted) && FindDevice(persisted) != null)
+				_selectedId = persisted;
 		}
 
 		internal PlaybackDevice FindDevice(string id)
@@ -76,18 +67,11 @@ namespace swapmyaudio.Audio
 			return null;
 		}
 
-		internal bool SelectSystemDefault() => SelectDevice("");
-
 		internal bool SelectDevice(string id)
 		{
 			id ??= "";
-			if (_policy != null) {
-				if (!_policy.SetPersistedRenderEndpoint(id))
-					return false;
-
-				Refresh(forceDevices: true);
-				return true;
-			}
+			if (_policy != null)
+				_policy.SetPersistedRenderEndpoint(id);
 
 			_selectedId = id;
 			return true;

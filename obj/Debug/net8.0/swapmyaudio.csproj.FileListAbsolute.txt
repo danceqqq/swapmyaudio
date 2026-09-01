@@ -10,3 +10,4 @@ C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\
 C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\refint\swapmyaudio.dll
 C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.pdb
 C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\ref\swapmyaudio.dll
+C:\Users\myangell\Documents\My Games\Terraria\tModLoader\ModSources\swapmyaudio\obj\Debug\net8.0\swapmyaudio.sourcelink.json

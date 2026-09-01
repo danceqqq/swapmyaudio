@@ -32,6 +32,9 @@ namespace swapmyaudio.UI
 		private static int _lastPercentIndex = -1;
 		private static int _hoverSide;
 		private static int _poll;
+		private static int _index;
+		private static bool _leftPressed;
+		private static bool _wasMouseLeft;
 		private static Vector2 _anchor;
 		private static Vector2 _offset;
 
@@ -54,10 +57,19 @@ namespace swapmyaudio.UI
 			if (!_service.RoutingSupported && !string.IsNullOrEmpty(AppAudioPolicy.LastError))
 				ModContent.GetInstance<swapmyaudio>().Logger.Warn("Audio policy: " + AppAudioPolicy.LastError);
 
+			ModContent.GetInstance<swapmyaudio>().Logger.Info($"Audio devices: {_service.Devices.Count}, policy: {_service.RoutingSupported}");
+
 			On_Main.DrawMenu += DrawMenuHook;
 			On_IngameOptions.Draw += DrawOptionsHook;
 			On_IngameOptions.DrawRightSide += DrawRightSideHook;
 			On_IngameOptions.DrawValueBar += DrawValueBarHook;
+		}
+
+		public override void PostUpdateInput()
+		{
+			if (Main.mouseLeft && !_wasMouseLeft)
+				_leftPressed = true;
+			_wasMouseLeft = Main.mouseLeft;
 		}
 
 		public override void Unload()
@@ -70,6 +82,8 @@ namespace swapmyaudio.UI
 		private static void DrawMenuHook(On_Main.orig_DrawMenu orig, Main self, GameTime time)
 		{
 			_bars = 0;
+			if (Main.mouseLeft && Main.mouseLeftRelease)
+				_leftPressed = true;
 			bool page = Main.gameMenu && Main.menuMode == TitleVolumeMenuMode;
 			if (page)
 				BeginVolumePage(!_wasTitlePage);
@@ -85,6 +99,8 @@ namespace swapmyaudio.UI
 			_optionsVolumePage = false;
 			_lastPercentIndex = -1;
 			_bars = 0;
+			if (!Main.gameMenu && Main.mouseLeft && Main.mouseLeftRelease)
+				_leftPressed = true;
 			orig(main, sb);
 
 			if (_optionsVolumePage)
@@ -161,9 +177,10 @@ namespace swapmyaudio.UI
 			bool dirty = _service != null && _service.DevicesDirty;
 			if (entered || dirty || _poll >= PollInterval) {
 				_poll = 0;
-				_service?.Refresh(forceDevices: entered);
-				RebuildEntries();
+				_service?.Refresh(forceDevices: entered || dirty);
 			}
+
+			RebuildEntries();
 		}
 
 		private static void EndVolumePage()
@@ -174,13 +191,26 @@ namespace swapmyaudio.UI
 
 		private static void RebuildEntries()
 		{
+			string keep = "";
+			if (_index >= 0 && _index < Entries.Count)
+				keep = Entries[_index].Id;
+			else if (_service != null)
+				keep = _service.SelectedId;
+
 			Entries.Clear();
 			Entries.Add(new Entry("", L("SystemDefault")));
-			if (_service == null)
-				return;
+			if (_service != null) {
+				foreach (PlaybackDevice device in _service.Devices)
+					Entries.Add(new Entry(device.Id, device.Name));
+			}
 
-			foreach (PlaybackDevice device in _service.Devices)
-				Entries.Add(new Entry(device.Id, device.Name));
+			_index = 0;
+			for (int i = 0; i < Entries.Count; i++) {
+				if (string.Equals(Entries[i].Id, keep, StringComparison.OrdinalIgnoreCase)) {
+					_index = i;
+					break;
+				}
+			}
 		}
 
 		private static void DrawPicker(SpriteBatch sb, Vector2 row, bool title)
@@ -259,26 +289,22 @@ namespace swapmyaudio.UI
 			float drawScale = scale * (hovered ? 1.06f : 1f);
 			Utils.DrawBorderStringFourWay(sb, font, line, x, y, color, Color.Black, origin, drawScale);
 
-			if (_armed && hovered && JustClicked()) {
-				ConsumeClick();
-				Cycle(side);
+			if (_armed && hovered && _leftPressed) {
+				_leftPressed = false;
+				Main.mouseLeftRelease = false;
+				Cycle(side == 0 ? 1 : side);
 			}
 		}
 
 		private static string CurrentName()
 		{
-			return _service?.DisplayName(L("SystemDefault")) ?? L("SystemDefault");
-		}
+			if (Entries.Count == 0)
+				return L("SystemDefault");
 
-		private static int CurrentIndex()
-		{
-			string id = _service?.SelectedId ?? "";
-			for (int i = 0; i < Entries.Count; i++) {
-				if (string.Equals(Entries[i].Id, id, StringComparison.OrdinalIgnoreCase))
-					return i;
-			}
-
-			return 0;
+			int i = _index;
+			if (i < 0 || i >= Entries.Count)
+				i = 0;
+			return Entries[i].Name;
 		}
 
 		private static void Cycle(int delta)
@@ -286,15 +312,13 @@ namespace swapmyaudio.UI
 			if (_service == null || Entries.Count == 0 || delta == 0)
 				return;
 
-			int next = (CurrentIndex() + delta) % Entries.Count;
-			if (next < 0)
-				next += Entries.Count;
+			_index += delta;
+			while (_index < 0)
+				_index += Entries.Count;
+			_index %= Entries.Count;
 
-			string id = Entries[next].Id;
-			bool ok = string.IsNullOrEmpty(id) ? _service.SelectSystemDefault() : _service.SelectDevice(id);
-			SoundEngine.PlaySound(ok ? SoundID.MenuTick : SoundID.MenuClose);
-			if (ok)
-				RebuildEntries();
+			_service.SelectDevice(Entries[_index].Id);
+			SoundEngine.PlaySound(SoundID.MenuTick);
 		}
 
 		private static string Truncate(DynamicSpriteFont font, string text, float scale, float maxWidth)
@@ -307,10 +331,6 @@ namespace swapmyaudio.UI
 				text = text[..^1];
 			return text + ellipsis;
 		}
-
-		private static bool JustClicked() => Main.mouseLeft && Main.mouseLeftRelease;
-
-		private static void ConsumeClick() => Main.mouseLeftRelease = false;
 
 		private static string L(string key) => Language.GetTextValue("Mods.swapmyaudio.UI." + key);
 

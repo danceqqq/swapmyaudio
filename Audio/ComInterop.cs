@@ -42,6 +42,7 @@ namespace swapmyaudio.Audio
 	{
 	}
 
+	[ComImport]
 	[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 	internal interface IMMDeviceEnumerator
@@ -62,6 +63,7 @@ namespace swapmyaudio.Audio
 		int UnregisterEndpointNotificationCallback(IMMNotificationClient pClient);
 	}
 
+	[ComImport]
 	[Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387FC4")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 	internal interface IMMDeviceCollection
@@ -73,6 +75,7 @@ namespace swapmyaudio.Audio
 		int Item(uint nDevice, out IMMDevice ppDevice);
 	}
 
+	[ComImport]
 	[Guid("D666063F-1587-4E43-81F1-B948E807363F")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 	internal interface IMMDevice
@@ -84,12 +87,13 @@ namespace swapmyaudio.Audio
 		int OpenPropertyStore(int stgmAccess, out IPropertyStore ppProperties);
 
 		[PreserveSig]
-		int GetId([MarshalAs(UnmanagedType.LPWStr)] out string ppstrId);
+		int GetId(out IntPtr ppstrId);
 
 		[PreserveSig]
 		int GetState(out int pdwState);
 	}
 
+	[ComImport]
 	[Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 	internal interface IPropertyStore
@@ -110,6 +114,7 @@ namespace swapmyaudio.Audio
 		int Commit();
 	}
 
+	[ComImport]
 	[Guid("7991EEC9-7E65-4D19-B973-D16CC314B4E5")]
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 	internal interface IMMNotificationClient
@@ -133,6 +138,7 @@ namespace swapmyaudio.Audio
 	internal static class NativeMethods
 	{
 		internal const int DeviceStateActive = 0x1;
+		internal const int DeviceStateMaskAll = 0xF;
 		internal const int StgmRead = 0;
 		internal const int VtLpWStr = 31;
 		internal const int VtBstr = 8;
@@ -142,6 +148,9 @@ namespace swapmyaudio.Audio
 
 		[DllImport("ole32.dll")]
 		internal static extern int PropVariantClear(ref PropVariant pvar);
+
+		[DllImport("ole32.dll")]
+		internal static extern int CoCreateInstance(ref Guid rclsid, IntPtr pUnkOuter, uint dwClsContext, ref Guid riid, out IntPtr ppv);
 
 		[DllImport("combase.dll")]
 		internal static extern int RoInitialize(int initType);

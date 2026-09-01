@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("swapmyaudio")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0eb65c698b40439d93533c8059bdae0f1ad2abe4")]
 [assembly: System.Reflection.AssemblyProductAttribute("swapmyaudio")]
 [assembly: System.Reflection.AssemblyTitleAttribute("swapmyaudio")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
