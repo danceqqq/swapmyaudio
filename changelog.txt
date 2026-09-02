@@ -1,1 +1,4 @@
-Первый релиз.
+First release.
+
+Change the playback device in Settings → Volume, including from ESC during a game.
+Windows only.

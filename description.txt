@@ -1,2 +1,3 @@
-Меняет устройство звука в Настройки → Громкость.
-Только Windows.
+It annoyed me that the volume playback device you use when you enter the game cannot be changed during the game. The mod changes the headphones or speaker in Settings → Volume → Select playback device.
+
+Windows only.
