@@ -1,1 +1,2 @@
-Client-side. Adds an audio output device list to Settings → Volume (title screen and in-game). It stays in sync with the Windows volume mixer entry for tModLoader. Windows only.
+Меняет устройство звука в Настройки → Громкость.
+Только Windows.

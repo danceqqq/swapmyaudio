@@ -1,16 +1,3 @@
-[b]Swap My Audio![/b] is a client-side mod that adds a device picker to Terraria's Volume menu.
+Меняет наушники или колонку в Настройки → Громкость. Системный звук Windows не трогает.
 
-[h1]What it does[/h1]
-[list]
-[*] Pick the playback device from Settings → Volume on the title screen and while in a world
-[*] The list updates while the menu is open when you plug in or unplug headphones
-[*] The first option is System Default, matching Windows Volume Mixer
-[*] Changing the device in-game updates the per-app output for tModLoader in Windows; changing it in Windows is picked up in the menu
-[/list]
-
-[h1]Notes[/h1]
-[list]
-[*] Client-side: the server does not need this mod
-[*] Windows 10 / 11 only. Per-app routing uses the same Volume Mixer API as Windows 11
-[*] This mod does not change the system default device and does not recreate Terraria's audio engine
-[/list]
+Только Windows.

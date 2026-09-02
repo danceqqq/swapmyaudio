@@ -4,7 +4,8 @@
 	<Import Project="..\tModLoader.targets" />
 
 	<ItemGroup>
-		
+		<AdditionalFiles Remove="image-4216444.png" />
+		<None Remove="image-4216444.png" />
 	</ItemGroup>
 
 </Project>

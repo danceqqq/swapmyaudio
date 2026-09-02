@@ -2,4 +2,4 @@ displayName = Swap My Audio!
 author = myangell
 version = 0.1
 side = Client
-buildIgnore = *.csproj, *.sln, *.user, obj\, bin\, .vs\, .git\
+buildIgnore = *.csproj, *.sln, *.user, obj\, bin\, .vs\, .git\, Properties\, image-4216444.png
