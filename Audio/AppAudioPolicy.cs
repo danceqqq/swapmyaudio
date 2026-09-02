@@ -8,27 +8,28 @@ namespace swapmyaudio.Audio
 		private const string ClassName = "Windows.Media.Internal.AudioPolicyConfig";
 		private const string MmdevapiToken = @"\\?\SWD#MMDEVAPI#";
 		private const string RenderInterface = "#{e6327cad-dcec-4949-ae8a-991e976a79d2}";
-		private const int SetSlot = 25;
-		private const int GetSlot = 26;
 
 		private static readonly Guid Win11Iid = new("ab3d4648-e242-459f-b02f-541c70306324");
 		private static readonly Guid Win10Iid = new("2a59116d-6c4f-45e0-a74f-707e3fef9258");
+		private static readonly Guid Win16299Iid = new("32aa8e18-6496-4e24-9f94-b800e7eccc45");
 		private static readonly Guid ActivationFactoryIid = new("00000035-0000-0000-C000-000000000046");
 		private static readonly ERole[] Roles = { ERole.eConsole, ERole.eMultimedia, ERole.eCommunications };
 
 		private readonly IntPtr _factory;
 		private readonly NativeMethods.SetPersistedDelegate _set;
 		private readonly NativeMethods.GetPersistedDelegate _get;
+		private readonly NativeMethods.ClearPersistedDelegate _clear;
 
 		internal static string LastError { get; private set; } = "";
+
+		internal string LastSetError { get; private set; } = "";
 
 		private AppAudioPolicy(IntPtr factory)
 		{
 			_factory = factory;
-			IntPtr vtable = Marshal.ReadIntPtr(factory);
-			int size = IntPtr.Size;
-			_set = Marshal.GetDelegateForFunctionPointer<NativeMethods.SetPersistedDelegate>(Marshal.ReadIntPtr(vtable, size * SetSlot));
-			_get = Marshal.GetDelegateForFunctionPointer<NativeMethods.GetPersistedDelegate>(Marshal.ReadIntPtr(vtable, size * GetSlot));
+			_set = ComVtable.Fn<NativeMethods.SetPersistedDelegate>(factory, NativeMethods.PolicySetSlot);
+			_get = ComVtable.Fn<NativeMethods.GetPersistedDelegate>(factory, NativeMethods.PolicyGetSlot);
+			_clear = ComVtable.Fn<NativeMethods.ClearPersistedDelegate>(factory, NativeMethods.PolicyClearSlot);
 		}
 
 		internal static bool TryCreate(out AppAudioPolicy policy)
@@ -47,8 +48,8 @@ namespace swapmyaudio.Audio
 			try {
 				if (TryActivate(className, Win11Iid, out IntPtr factory) ||
 				    TryActivate(className, Win10Iid, out factory) ||
-				    (TryActivate(className, ActivationFactoryIid, out factory) && TryQueryKnown(factory, out factory)) ||
-				    TryAudioSes(className, out factory)) {
+				    TryActivate(className, Win16299Iid, out factory) ||
+				    TryFromInspectable(className, out factory)) {
 					policy = new AppAudioPolicy(factory);
 					return true;
 				}
@@ -80,42 +81,66 @@ namespace swapmyaudio.Audio
 
 		internal bool SetPersistedRenderEndpoint(string deviceId)
 		{
+			LastSetError = "";
 			uint pid = (uint)Environment.ProcessId;
+			if (string.IsNullOrEmpty(deviceId))
+				return ClearAll(pid);
+
 			IntPtr hstring = IntPtr.Zero;
-			bool created = false;
 			try {
-				if (!string.IsNullOrEmpty(deviceId)) {
-					string packed = PackDeviceId(deviceId);
-					if (NativeMethods.WindowsCreateString(packed, (uint)packed.Length, out hstring) < 0)
-						return false;
-					created = true;
+				string packed = PackDeviceId(deviceId);
+				if (NativeMethods.WindowsCreateString(packed, (uint)packed.Length, out hstring) < 0 || hstring == IntPtr.Zero) {
+					LastSetError = "WindowsCreateString packed id failed";
+					return false;
 				}
 
-				bool ok = Apply(pid, hstring);
-				if (ok || created)
-					return ok;
-
-				if (NativeMethods.WindowsCreateString("", 0, out hstring) < 0)
-					return false;
-				created = true;
 				return Apply(pid, hstring);
 			}
-			catch {
+			catch (Exception e) {
+				LastSetError = e.GetType().Name + ": " + e.Message;
 				return false;
 			}
 			finally {
-				if (created && hstring != IntPtr.Zero)
+				if (hstring != IntPtr.Zero)
 					NativeMethods.WindowsDeleteString(hstring);
 			}
+		}
+
+		private bool ClearAll(uint pid)
+		{
+			bool cleared = false;
+			try {
+				int hr = _clear(_factory);
+				cleared = hr >= 0;
+				if (!cleared)
+					LastSetError = "ClearAll 0x" + hr.ToString("X8");
+			}
+			catch (Exception e) {
+				LastSetError = "ClearAll " + e.GetType().Name + ": " + e.Message;
+			}
+
+			bool zeroed = Apply(pid, IntPtr.Zero);
+			return cleared || zeroed;
 		}
 
 		private bool Apply(uint pid, IntPtr deviceId)
 		{
 			bool ok = false;
+			string errors = "";
 			foreach (ERole role in Roles) {
-				if (Set(pid, role, deviceId))
+				int hr = Set(pid, role, deviceId);
+				if (hr >= 0)
 					ok = true;
+				else if (hr != NativeMethods.ProcessNoAudio)
+					errors += ((errors.Length == 0) ? "" : ", ") + role + "=0x" + hr.ToString("X8");
+				else if (string.IsNullOrEmpty(errors))
+					errors = "PROCESS_NO_AUDIO 0x80070057";
 			}
+
+			if (!ok && !string.IsNullOrEmpty(errors))
+				LastSetError = errors;
+			else if (ok)
+				LastSetError = "";
 
 			return ok;
 		}
@@ -140,13 +165,13 @@ namespace swapmyaudio.Audio
 			}
 		}
 
-		private bool Set(uint pid, ERole role, IntPtr deviceId)
+		private int Set(uint pid, ERole role, IntPtr deviceId)
 		{
 			try {
-				return _set(_factory, pid, (int)EDataFlow.eRender, (int)role, deviceId) >= 0;
+				return _set(_factory, pid, (int)EDataFlow.eRender, (int)role, deviceId);
 			}
 			catch {
-				return false;
+				return unchecked((int)0x80004005);
 			}
 		}
 
@@ -174,15 +199,16 @@ namespace swapmyaudio.Audio
 
 		private static void EnsureWinRt()
 		{
-			int hr = NativeMethods.RoInitialize(NativeMethods.RoInitSingleThreaded);
+			int hr = NativeMethods.RoInitialize(NativeMethods.RoInitMultiThreaded);
 			if (hr < 0 && hr != NativeMethods.RpcEChangedMode)
-				NativeMethods.RoInitialize(1);
+				NativeMethods.RoInitialize(NativeMethods.RoInitSingleThreaded);
 		}
 
 		private static bool TryActivate(IntPtr className, Guid iid, out IntPtr factory)
 		{
 			factory = IntPtr.Zero;
-			int hr = NativeMethods.RoGetActivationFactory(className, ref iid, out factory);
+			Guid g = iid;
+			int hr = NativeMethods.RoGetActivationFactory(className, ref g, out factory);
 			if (hr >= 0 && factory != IntPtr.Zero)
 				return true;
 
@@ -191,39 +217,62 @@ namespace swapmyaudio.Audio
 			return false;
 		}
 
-		private static bool TryAudioSes(IntPtr className, out IntPtr factory)
+		private static bool TryFromInspectable(IntPtr className, out IntPtr factory)
 		{
 			factory = IntPtr.Zero;
+			IntPtr activation = IntPtr.Zero;
 			try {
-				int hr = NativeMethods.AudioSesGetActivationFactory(className, out IntPtr activation);
+				int hr = NativeMethods.AudioSesGetActivationFactory(className, out activation);
 				if (hr < 0 || activation == IntPtr.Zero) {
-					LastError = "AudioSes DllGetActivationFactory 0x" + hr.ToString("X8");
+					Guid activationIid = ActivationFactoryIid;
+					hr = NativeMethods.RoGetActivationFactory(className, ref activationIid, out activation);
+				}
+
+				if (hr < 0 || activation == IntPtr.Zero) {
+					LastError = "DllGetActivationFactory 0x" + hr.ToString("X8");
+					activation = IntPtr.Zero;
 					return false;
 				}
 
-				if (TryQueryKnown(activation, out factory))
+				if (TryQueryKnown(activation, out factory) || TryQueryLastIid(activation, out factory))
 					return true;
 
-				LastError = "AudioSes QueryInterface failed";
+				LastError = "AudioPolicy QueryInterface failed";
 				return false;
 			}
 			catch (Exception e) {
 				LastError = "AudioSes: " + e.Message;
 				return false;
 			}
+			finally {
+				if (activation != IntPtr.Zero && activation != factory)
+					ComVtable.Release(activation);
+			}
 		}
 
 		private static bool TryQueryKnown(IntPtr source, out IntPtr factory)
 		{
-			return TryQuery(source, Win11Iid, out factory) || TryQuery(source, Win10Iid, out factory);
+			if (ComVtable.QueryInterface(source, Win11Iid, out factory) >= 0 && factory != IntPtr.Zero)
+				return true;
+			if (ComVtable.QueryInterface(source, Win10Iid, out factory) >= 0 && factory != IntPtr.Zero)
+				return true;
+			return ComVtable.QueryInterface(source, Win16299Iid, out factory) >= 0 && factory != IntPtr.Zero;
 		}
 
-		private static bool TryQuery(IntPtr source, Guid iid, out IntPtr ppv)
+		private static bool TryQueryLastIid(IntPtr source, out IntPtr factory)
 		{
-			ppv = IntPtr.Zero;
-			IntPtr vtable = Marshal.ReadIntPtr(source);
-			var qi = Marshal.GetDelegateForFunctionPointer<NativeMethods.QueryInterfaceDelegate>(Marshal.ReadIntPtr(vtable));
-			return qi(source, ref iid, out ppv) >= 0 && ppv != IntPtr.Zero;
+			factory = IntPtr.Zero;
+			int hr = ComVtable.Fn<NativeMethods.GetIidsDelegate>(source, NativeMethods.InspectableGetIidsSlot)(source, out uint count, out IntPtr iids);
+			if (hr < 0 || iids == IntPtr.Zero || count == 0)
+				return false;
+
+			try {
+				Guid last = Marshal.PtrToStructure<Guid>(iids + 16 * ((int)count - 1));
+				return ComVtable.QueryInterface(source, last, out factory) >= 0 && factory != IntPtr.Zero;
+			}
+			finally {
+				Marshal.FreeCoTaskMem(iids);
+			}
 		}
 	}
 }

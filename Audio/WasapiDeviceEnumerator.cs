@@ -8,52 +8,18 @@ namespace swapmyaudio.Audio
 	internal sealed class WasapiDeviceEnumerator : IDisposable
 	{
 		private readonly object _gate = new();
-		private readonly DeviceNotificationClient _client;
-		private IMMDeviceEnumerator _enumerator;
+		private IntPtr _enumerator;
 		private List<PlaybackDevice> _devices = new();
 		private int _dirty = 1;
-		private bool _listening;
 
 		internal WasapiDeviceEnumerator()
 		{
-			_client = new DeviceNotificationClient(this);
-			_enumerator = CreateEnumerator();
-			try {
-				if (_enumerator != null && _enumerator.RegisterEndpointNotificationCallback(_client) >= 0)
-					_listening = true;
-			}
-			catch {
-				_listening = false;
-			}
-
+			_enumerator = CreateEnumerator(out string error);
+			LastError = error;
 			Refresh();
 		}
 
-		private static IMMDeviceEnumerator CreateEnumerator()
-		{
-			try {
-				return (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
-			}
-			catch {
-			}
-
-			Guid clsid = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
-			Guid iid = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
-			if (NativeMethods.CoCreateInstance(ref clsid, IntPtr.Zero, 23, ref iid, out IntPtr unknown) < 0 || unknown == IntPtr.Zero)
-				return null;
-
-			try {
-				if (OperatingSystem.IsWindows())
-					return (IMMDeviceEnumerator)Marshal.GetObjectForIUnknown(unknown);
-				return null;
-			}
-			catch {
-				return null;
-			}
-			finally {
-				Marshal.Release(unknown);
-			}
-		}
+		internal string LastError { get; private set; } = "";
 
 		internal IReadOnlyList<PlaybackDevice> Devices
 		{
@@ -73,19 +39,24 @@ namespace swapmyaudio.Audio
 		internal void Refresh()
 		{
 			var next = new List<PlaybackDevice>();
-			IMMDeviceEnumerator enumerator = _enumerator;
-			if (enumerator == null)
+			IntPtr enumerator = _enumerator;
+			if (enumerator == IntPtr.Zero) {
+				if (string.IsNullOrEmpty(LastError))
+					LastError = "MMDeviceEnumerator missing";
 				return;
+			}
 
 			try {
 				Collect(enumerator, NativeMethods.DeviceStateActive, next);
 				if (next.Count == 0)
 					Collect(enumerator, NativeMethods.DeviceStateMaskAll, next);
-
 				if (next.Count == 0)
 					TryAddDefault(enumerator, next);
+
+				LastError = next.Count == 0 ? "EnumAudioEndpoints returned 0 devices" : "";
 			}
-			catch {
+			catch (Exception e) {
+				LastError = e.GetType().Name + ": " + e.Message;
 				return;
 			}
 
@@ -94,46 +65,73 @@ namespace swapmyaudio.Audio
 				_devices = next;
 		}
 
-		private static void Collect(IMMDeviceEnumerator enumerator, int stateMask, List<PlaybackDevice> next)
+		public void Dispose()
 		{
-			if (enumerator.EnumAudioEndpoints(EDataFlow.eRender, stateMask, out IMMDeviceCollection collection) < 0 || collection == null)
+			IntPtr enumerator = _enumerator;
+			_enumerator = IntPtr.Zero;
+			ComVtable.Release(enumerator);
+		}
+
+		private static IntPtr CreateEnumerator(out string error)
+		{
+			error = "";
+			Guid clsid = NativeMethods.MmDeviceEnumeratorClsid;
+			Guid iid = NativeMethods.ImmDeviceEnumeratorIid;
+			int hr = NativeMethods.CoCreateInstance(ref clsid, IntPtr.Zero, NativeMethods.ClsCtxAll, ref iid, out IntPtr enumerator);
+			if (hr < 0 || enumerator == IntPtr.Zero) {
+				error = "CoCreateInstance 0x" + hr.ToString("X8");
+				return IntPtr.Zero;
+			}
+
+			return enumerator;
+		}
+
+		private static void Collect(IntPtr enumerator, int stateMask, List<PlaybackDevice> next)
+		{
+			int hr = ComVtable.Fn<NativeMethods.EnumAudioEndpointsDelegate>(enumerator, NativeMethods.EnumeratorEnumSlot)(
+				enumerator, (int)EDataFlow.eRender, stateMask, out IntPtr collection);
+			if (hr < 0 || collection == IntPtr.Zero)
 				return;
 
 			try {
-				if (collection.GetCount(out uint count) < 0)
+				hr = ComVtable.Fn<NativeMethods.GetCountDelegate>(collection, NativeMethods.CollectionGetCountSlot)(collection, out uint count);
+				if (hr < 0)
 					return;
 
 				for (uint i = 0; i < count; i++) {
-					if (collection.Item(i, out IMMDevice device) < 0 || device == null)
+					hr = ComVtable.Fn<NativeMethods.ItemDelegate>(collection, NativeMethods.CollectionItemSlot)(collection, i, out IntPtr device);
+					if (hr < 0 || device == IntPtr.Zero)
 						continue;
 
 					try {
 						AddDevice(device, next);
 					}
 					finally {
-						Release(device);
+						ComVtable.Release(device);
 					}
 				}
 			}
 			finally {
-				Release(collection);
+				ComVtable.Release(collection);
 			}
 		}
 
-		private static void TryAddDefault(IMMDeviceEnumerator enumerator, List<PlaybackDevice> next)
+		private static void TryAddDefault(IntPtr enumerator, List<PlaybackDevice> next)
 		{
-			if (enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, out IMMDevice device) < 0 || device == null)
+			int hr = ComVtable.Fn<NativeMethods.GetDefaultEndpointDelegate>(enumerator, NativeMethods.EnumeratorDefaultSlot)(
+				enumerator, (int)EDataFlow.eRender, (int)ERole.eConsole, out IntPtr device);
+			if (hr < 0 || device == IntPtr.Zero)
 				return;
 
 			try {
 				AddDevice(device, next);
 			}
 			finally {
-				Release(device);
+				ComVtable.Release(device);
 			}
 		}
 
-		private static void AddDevice(IMMDevice device, List<PlaybackDevice> next)
+		private static void AddDevice(IntPtr device, List<PlaybackDevice> next)
 		{
 			string id = ReadId(device);
 			if (string.IsNullOrEmpty(id))
@@ -147,9 +145,10 @@ namespace swapmyaudio.Audio
 			next.Add(new PlaybackDevice(id, ReadFriendlyName(device)));
 		}
 
-		private static string ReadId(IMMDevice device)
+		private static string ReadId(IntPtr device)
 		{
-			if (device.GetId(out IntPtr ptr) < 0 || ptr == IntPtr.Zero)
+			int hr = ComVtable.Fn<NativeMethods.GetIdDelegate>(device, NativeMethods.DeviceGetIdSlot)(device, out IntPtr ptr);
+			if (hr < 0 || ptr == IntPtr.Zero)
 				return "";
 
 			try {
@@ -160,36 +159,17 @@ namespace swapmyaudio.Audio
 			}
 		}
 
-		public void Dispose()
+		private static string ReadFriendlyName(IntPtr device)
 		{
-			IMMDeviceEnumerator enumerator = _enumerator;
-			if (enumerator == null)
-				return;
-
-			_enumerator = null;
-			try {
-				if (_listening)
-					enumerator.UnregisterEndpointNotificationCallback(_client);
-			}
-			catch {
-			}
-
-			_listening = false;
-			try {
-				Release(enumerator);
-			}
-			catch {
-			}
-		}
-
-		private static string ReadFriendlyName(IMMDevice device)
-		{
-			if (device.OpenPropertyStore(NativeMethods.StgmRead, out IPropertyStore store) < 0 || store == null)
+			int hr = ComVtable.Fn<NativeMethods.OpenPropertyStoreDelegate>(device, NativeMethods.DeviceOpenStoreSlot)(
+				device, NativeMethods.StgmRead, out IntPtr store);
+			if (hr < 0 || store == IntPtr.Zero)
 				return "";
 
 			try {
 				PropertyKey key = PropertyKey.DeviceFriendlyName;
-				if (store.GetValue(ref key, out PropVariant value) < 0)
+				hr = ComVtable.Fn<NativeMethods.GetValueDelegate>(store, NativeMethods.PropertyStoreGetValueSlot)(store, ref key, out PropVariant value);
+				if (hr < 0)
 					return "";
 
 				try {
@@ -203,58 +183,10 @@ namespace swapmyaudio.Audio
 			catch {
 			}
 			finally {
-				Release(store);
+				ComVtable.Release(store);
 			}
 
 			return "";
-		}
-
-		private static void Release(object comObject)
-		{
-			if (OperatingSystem.IsWindows())
-				Marshal.ReleaseComObject(comObject);
-		}
-
-		[ComVisible(true)]
-		private sealed class DeviceNotificationClient : IMMNotificationClient
-		{
-			private readonly WasapiDeviceEnumerator _owner;
-
-			internal DeviceNotificationClient(WasapiDeviceEnumerator owner)
-			{
-				_owner = owner;
-			}
-
-			public int OnDeviceStateChanged(string pwstrDeviceId, int dwNewState)
-			{
-				_owner.MarkDirty();
-				return 0;
-			}
-
-			public int OnDeviceAdded(string pwstrDeviceId)
-			{
-				_owner.MarkDirty();
-				return 0;
-			}
-
-			public int OnDeviceRemoved(string pwstrDeviceId)
-			{
-				_owner.MarkDirty();
-				return 0;
-			}
-
-			public int OnDefaultDeviceChanged(EDataFlow flow, ERole role, string pwstrDefaultDeviceId)
-			{
-				_owner.MarkDirty();
-				return 0;
-			}
-
-			public int OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key)
-			{
-				if (key.fmtid == PropertyKey.DeviceFriendlyName.fmtid && key.pid == PropertyKey.DeviceFriendlyName.pid)
-					_owner.MarkDirty();
-				return 0;
-			}
 		}
 	}
 }

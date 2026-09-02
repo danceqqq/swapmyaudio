@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace swapmyaudio.Audio
 {
@@ -20,7 +21,8 @@ namespace swapmyaudio.Audio
 				RoutingSupported = AppAudioPolicy.TryCreate(out _policy);
 				Refresh(forceDevices: true);
 			}
-			catch {
+			catch (Exception e) {
+				LastError = e.GetType().Name + ": " + e.Message;
 				Supported = false;
 			}
 		}
@@ -28,6 +30,10 @@ namespace swapmyaudio.Audio
 		internal bool Supported { get; private set; }
 
 		internal bool RoutingSupported { get; }
+
+		internal string LastError { get; private set; } = "";
+
+		internal string LastSetError => _policy?.LastSetError ?? "";
 
 		internal IReadOnlyList<PlaybackDevice> Devices => _enumerator?.Devices ?? Array.Empty<PlaybackDevice>();
 
@@ -46,12 +52,12 @@ namespace swapmyaudio.Audio
 			if (forceDevices || dirty)
 				_enumerator.Refresh();
 
-			if (_policy == null)
-				return;
-
-			string persisted = _policy.GetPersistedRenderEndpoint();
-			if (!string.IsNullOrEmpty(persisted) && FindDevice(persisted) != null)
-				_selectedId = persisted;
+			if (!string.IsNullOrEmpty(_enumerator.LastError))
+				LastError = _enumerator.LastError;
+			else if (!RoutingSupported)
+				LastError = AppAudioPolicy.LastError;
+			else
+				LastError = "";
 		}
 
 		internal PlaybackDevice FindDevice(string id)
@@ -70,24 +76,46 @@ namespace swapmyaudio.Audio
 		internal bool SelectDevice(string id)
 		{
 			id ??= "";
-			if (_policy != null)
-				_policy.SetPersistedRenderEndpoint(id);
+			bool tap;
+			try {
+				tap = FAudioOutputTap.SetDevice(id);
+			}
+			catch (Exception e) {
+				LastError = e.GetType().Name + ": " + e.Message;
+				return false;
+			}
+
+			if (!tap && !string.IsNullOrEmpty(FAudioOutputTap.LastError))
+				LastError = FAudioOutputTap.LastError;
 
 			_selectedId = id;
-			return true;
+			if (tap)
+				LastError = "";
+			return tap;
 		}
 
-		internal string DisplayName(string systemDefaultLabel)
+		internal string SummarizeDevices(int maxNames = 4)
 		{
-			if (IsSystemDefault)
-				return systemDefaultLabel;
+			var devices = Devices;
+			if (devices.Count == 0)
+				return "none";
 
-			PlaybackDevice device = FindDevice(_selectedId);
-			return device?.Name ?? systemDefaultLabel;
+			var sb = new StringBuilder();
+			int n = Math.Min(maxNames, devices.Count);
+			for (int i = 0; i < n; i++) {
+				if (i > 0)
+					sb.Append(", ");
+				sb.Append(devices[i].Name);
+			}
+
+			if (devices.Count > n)
+				sb.Append(", +").Append(devices.Count - n);
+			return sb.ToString();
 		}
 
 		public void Dispose()
 		{
+			FAudioOutputTap.Shutdown();
 			_enumerator?.Dispose();
 		}
 	}
